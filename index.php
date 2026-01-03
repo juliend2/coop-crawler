@@ -79,6 +79,40 @@ $sectors = $db->query($sectors_query)->fetchAll(PDO::FETCH_COLUMN);
 
 $zones_query = "SELECT DISTINCT zone FROM listings WHERE zone IS NOT NULL ORDER BY zone";
 $zones = $db->query($zones_query)->fetchAll(PDO::FETCH_COLUMN);
+
+// Handle note creation
+$note_message = '';
+$note_error = '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['action'] === 'add_note') {
+    $listing_id = isset($_POST['listing_id']) ? (int)$_POST['listing_id'] : 0;
+    $note_text = isset($_POST['note']) ? trim($_POST['note']) : '';
+    
+    if ($listing_id > 0 && !empty($note_text)) {
+        try {
+            $stmt = $db->prepare("INSERT INTO notes (note, listing_id) VALUES (?, ?)");
+            $stmt->execute([$note_text, $listing_id]);
+            $note_message = "Note ajoutée avec succès!";
+        } catch (PDOException $e) {
+            $note_error = "Erreur lors de l'ajout de la note: " . $e->getMessage();
+        }
+    } else {
+        $note_error = "Veuillez remplir tous les champs.";
+    }
+}
+
+// Fetch notes for all listings
+$notes_query = "SELECT * FROM notes ORDER BY created_at DESC";
+$all_notes = $db->query($notes_query)->fetchAll(PDO::FETCH_ASSOC);
+
+// Group notes by listing_id
+$notes_by_listing = [];
+foreach ($all_notes as $note) {
+    $listing_id = $note['listing_id'];
+    if (!isset($notes_by_listing[$listing_id])) {
+        $notes_by_listing[$listing_id] = [];
+    }
+    $notes_by_listing[$listing_id][] = $note;
+}
 ?>
 <!DOCTYPE html>
 <html lang="fr">
@@ -322,6 +356,134 @@ $zones = $db->query($zones_query)->fetchAll(PDO::FETCH_COLUMN);
             color: #333;
         }
 
+        .btn-small {
+            padding: 6px 12px;
+            font-size: 0.9em;
+        }
+
+        .notes-count {
+            background: #667eea;
+            color: white;
+            padding: 2px 6px;
+            border-radius: 10px;
+            font-size: 0.8em;
+            margin-left: 5px;
+        }
+
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background-color: rgba(0, 0, 0, 0.5);
+            overflow: auto;
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 30px;
+            border-radius: 12px;
+            width: 90%;
+            max-width: 600px;
+            box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 2px solid #e0e0e0;
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            color: #333;
+        }
+
+        .close {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            line-height: 20px;
+        }
+
+        .close:hover {
+            color: #000;
+        }
+
+        .notes-list {
+            max-height: 300px;
+            overflow-y: auto;
+            margin-bottom: 20px;
+        }
+
+        .note-item {
+            background: #f8f9fa;
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+
+        .note-text {
+            margin-bottom: 8px;
+            color: #333;
+            line-height: 1.5;
+        }
+
+        .note-date {
+            font-size: 0.85em;
+            color: #666;
+        }
+
+        .note-form {
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 2px solid #e0e0e0;
+        }
+
+        .note-form textarea {
+            width: 100%;
+            padding: 12px;
+            border: 2px solid #e0e0e0;
+            border-radius: 6px;
+            font-size: 1em;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 100px;
+            margin-bottom: 10px;
+        }
+
+        .note-form textarea:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        .alert {
+            padding: 12px;
+            border-radius: 6px;
+            margin-bottom: 15px;
+        }
+
+        .alert-success {
+            background: #c8e6c9;
+            color: #2e7d32;
+            border: 1px solid #81c784;
+        }
+
+        .alert-error {
+            background: #ffcdd2;
+            color: #c62828;
+            border: 1px solid #e57373;
+        }
+
         @media (max-width: 768px) {
             .header h1 {
                 font-size: 1.8em;
@@ -337,6 +499,12 @@ $zones = $db->query($zones_query)->fetchAll(PDO::FETCH_COLUMN);
 
             th, td {
                 padding: 10px 8px;
+            }
+
+            .modal-content {
+                width: 95%;
+                margin: 10% auto;
+                padding: 20px;
             }
         }
     </style>
@@ -360,6 +528,14 @@ $zones = $db->query($zones_query)->fetchAll(PDO::FETCH_COLUMN);
             <div class="stat-card">
                 <div class="number"><?php echo $stats['sectors']; ?></div>
                 <div class="label">Secteurs</div>
+            </div>
+            <div class="stat-card">
+                <div class="number"><?php echo number_format($stats['with_car_parking']); ?></div>
+                <div class="label">Avec stationnement auto</div>
+            </div>
+            <div class="stat-card">
+                <div class="number"><?php echo number_format($stats['with_bike_parking']); ?></div>
+                <div class="label">Avec stationnement vélo</div>
             </div>
         </div>
 
@@ -406,6 +582,18 @@ $zones = $db->query($zones_query)->fetchAll(PDO::FETCH_COLUMN);
             </form>
         </div>
 
+        <?php if ($note_message): ?>
+            <div style="padding: 20px 30px; background: #c8e6c9; color: #2e7d32; margin: 0 30px; border-radius: 6px; margin-top: 20px;">
+                <?php echo htmlspecialchars($note_message); ?>
+            </div>
+        <?php endif; ?>
+
+        <?php if ($note_error): ?>
+            <div style="padding: 20px 30px; background: #ffcdd2; color: #c62828; margin: 0 30px; border-radius: 6px; margin-top: 20px;">
+                <?php echo htmlspecialchars($note_error); ?>
+            </div>
+        <?php endif; ?>
+
         <div class="table-container">
             <?php if (count($listings) > 0): ?>
                 <table>
@@ -422,11 +610,16 @@ $zones = $db->query($zones_query)->fetchAll(PDO::FETCH_COLUMN);
                                 onclick="sortTable('sector')">Secteur</th>
                             <th class="sortable <?php echo $sort === 'dwelling_type' ? 'sort-' . strtolower($order) : ''; ?>" 
                                 onclick="sortTable('dwelling_type')">Type</th>
+                            <th>Stationnement</th>
+                            <th>Notes</th>
                             <th>Lien</th>
                         </tr>
                     </thead>
                     <tbody>
-                        <?php foreach ($listings as $listing): ?>
+                        <?php foreach ($listings as $listing): 
+                            $listing_notes = isset($notes_by_listing[$listing['id']]) ? $notes_by_listing[$listing['id']] : [];
+                            $notes_count = count($listing_notes);
+                        ?>
                             <tr>
                                 <td><strong><?php echo htmlspecialchars($listing['name']); ?></strong></td>
                                 <td><?php echo htmlspecialchars($listing['address']); ?></td>
@@ -457,6 +650,20 @@ $zones = $db->query($zones_query)->fetchAll(PDO::FETCH_COLUMN);
                                 </td>
                                 <td><?php echo $listing['dwelling_type']; ?>½</td>
                                 <td>
+                                    <span class="badge <?php echo $listing['has_car_parking'] ? 'badge-yes' : 'badge-no'; ?>">
+                                        Auto: <?php echo $listing['has_car_parking'] ? 'Oui' : 'Non'; ?>
+                                    </span>
+                                    <br>
+                                    <span class="badge <?php echo $listing['has_bike_parking'] ? 'badge-yes' : 'badge-no'; ?>">
+                                        Vélo: <?php echo $listing['has_bike_parking'] ? 'Oui' : 'Non'; ?>
+                                    </span>
+                                </td>
+                                <td>
+                                    <button class="btn btn-small" onclick="openNotesModal(<?php echo $listing['id']; ?>, '<?php echo htmlspecialchars(addslashes($listing['name'])); ?>')">
+                                        📝 Notes <?php if ($notes_count > 0): ?><span class="notes-count">(<?php echo $notes_count; ?>)</span><?php endif; ?>
+                                    </button>
+                                </td>
+                                <td>
                                     <a href="<?php echo htmlspecialchars($listing['url']); ?>" target="_blank">
                                         Voir →
                                     </a>
@@ -474,7 +681,24 @@ $zones = $db->query($zones_query)->fetchAll(PDO::FETCH_COLUMN);
         </div>
     </div>
 
+    <!-- Notes Modal -->
+    <div id="notesModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modalTitle">Notes</h2>
+                <span class="close" onclick="closeNotesModal()">&times;</span>
+            </div>
+            <div id="notesContent">
+                <!-- Notes will be loaded here -->
+            </div>
+        </div>
+    </div>
+
     <script>
+        // Store notes data
+        const notesData = <?php echo json_encode($notes_by_listing); ?>;
+        const allListings = <?php echo json_encode(array_column($listings, null, 'id')); ?>;
+
         function sortTable(column) {
             const url = new URL(window.location);
             const currentSort = url.searchParams.get('sort');
@@ -488,6 +712,74 @@ $zones = $db->query($zones_query)->fetchAll(PDO::FETCH_COLUMN);
             
             url.searchParams.set('sort', column);
             window.location = url.toString();
+        }
+
+        function openNotesModal(listingId, listingName) {
+            const modal = document.getElementById('notesModal');
+            const modalTitle = document.getElementById('modalTitle');
+            const notesContent = document.getElementById('notesContent');
+            
+            modalTitle.textContent = `Notes - ${listingName}`;
+            
+            const notes = notesData[listingId] || [];
+            
+            let html = '<div class="notes-list">';
+            
+            if (notes.length > 0) {
+                notes.forEach(note => {
+                    const date = new Date(note.created_at);
+                    const formattedDate = date.toLocaleString('fr-FR', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                    });
+                    
+                    html += `
+                        <div class="note-item">
+                            <div class="note-text">${escapeHtml(note.note)}</div>
+                            <div class="note-date">Ajouté le ${formattedDate}</div>
+                        </div>
+                    `;
+                });
+            } else {
+                html += '<p style="color: #999; text-align: center; padding: 20px;">Aucune note pour cette coopérative.</p>';
+            }
+            
+            html += '</div>';
+            
+            html += `
+                <div class="note-form">
+                    <form method="POST" action="">
+                        <input type="hidden" name="action" value="add_note">
+                        <input type="hidden" name="listing_id" value="${listingId}">
+                        <textarea name="note" placeholder="Ajouter une note..." required></textarea>
+                        <button type="submit" class="btn">Ajouter une note</button>
+                    </form>
+                </div>
+            `;
+            
+            notesContent.innerHTML = html;
+            modal.style.display = 'block';
+        }
+
+        function closeNotesModal() {
+            document.getElementById('notesModal').style.display = 'none';
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Close modal when clicking outside of it
+        window.onclick = function(event) {
+            const modal = document.getElementById('notesModal');
+            if (event.target === modal) {
+                closeNotesModal();
+            }
         }
     </script>
 </body>

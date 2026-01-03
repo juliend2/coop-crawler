@@ -73,6 +73,17 @@ def init_database():
         )
     """)
     
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS notes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            note TEXT NOT NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            listing_id INTEGER NOT NULL,
+            FOREIGN KEY (listing_id) REFERENCES listings(id) ON DELETE CASCADE
+        )
+    """)
+    
     conn.commit()
     return conn
 

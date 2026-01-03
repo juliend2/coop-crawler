@@ -39,6 +39,8 @@ The crawler will:
 
 ## Database Schema
 
+### Listings Table
+
 The `listings` table contains:
 - `id`: Primary key
 - `name`: Cooperative name
@@ -52,6 +54,31 @@ The `listings` table contains:
 - `sector`: Sector name
 - `dwelling_type`: Dwelling type (5, 6, or 7)
 - `created_at`: Timestamp
+
+### Notes Table
+
+The `notes` table contains:
+- `id`: Primary key
+- `note`: Note text
+- `created_at`: Creation timestamp
+- `updated_at`: Last update timestamp
+- `listing_id`: Foreign key to listings table
+
+## Notes Feature
+
+The web interface includes a notes feature that allows you to add notes to each listing:
+
+1. Click the "📝 Notes" button in the Notes column for any listing
+2. A modal will open showing existing notes and a form to add new ones
+3. Notes are stored in the database and linked to the specific listing
+
+### Initializing Notes Table
+
+If you have an existing database, run this script to add the notes table:
+
+```bash
+python init_notes_table.py
+```
 
 ## Web Interface
 
