@@ -1,5 +1,7 @@
 # FHCQ Cooperatives Crawler
 
+(THIS WAS ALL VIBE-CODED)
+
 A web crawler that extracts cooperative housing listings from the FHCQ (Fédération de l'habitation coopérative du Québec) website.
 
 ## Features
@@ -50,6 +52,31 @@ The `listings` table contains:
 - `sector`: Sector name
 - `dwelling_type`: Dwelling type (5, 6, or 7)
 - `created_at`: Timestamp
+
+## Web Interface
+
+A PHP web interface is available to display the listings in a nice table format.
+
+### Requirements
+
+- PHP 7.4+ with PDO SQLite support
+- Web server (Apache, Nginx, or PHP built-in server)
+
+### Usage
+
+```bash
+# Using PHP built-in server
+php -S localhost:8000
+
+# Then open http://localhost:8000 in your browser
+```
+
+The interface includes:
+- Statistics dashboard
+- Filtering by zone, sector, dwelling type, and parking
+- Sortable columns
+- Responsive design
+- Clickable email and phone links
 
 ## Querying the Database
 
