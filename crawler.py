@@ -203,29 +203,57 @@ def extract_listing_data(url: str) -> Optional[Dict]:
         
         for pattern in address_patterns:
             if pattern:
-                address_text = pattern.get_text(strip=True)
+                # Use get_text with separator to preserve all text including nested elements
+                address_text = pattern.get_text(separator=' ', strip=True)
+                # Also try to get all strings from the element to catch any missing parts
+                if address_text:
+                    # Get all strings to ensure we capture everything
+                    all_strings = list(pattern.stripped_strings)
+                    if all_strings:
+                        # Join all strings to ensure we get the complete address
+                        full_address = ' '.join(all_strings)
+                        # Use the longer version (more complete)
+                        if len(full_address) > len(address_text):
+                            address_text = full_address
+                
                 if address_text and len(address_text) > 10:  # Basic validation
                     data['address'] = address_text
                     break
         
-        # If no address found, try to find text that looks like an address
+        # If no address found, try to find text that looks like an address by postal code
         if not data['address']:
-            # Look for postal code pattern (H1A 1A1)
+            # Look for postal code pattern (H1A 1A1) and extract full address context
             postal_code_pattern = re.compile(r'[A-Z]\d[A-Z]\s?\d[A-Z]\d')
-            all_text = soup.get_text()
-            matches = postal_code_pattern.findall(all_text)
-            if matches:
-                # Try to extract surrounding text as address
-                for match in matches:
-                    idx = all_text.find(match)
-                    if idx > 0:
-                        # Get text around the postal code
-                        start = max(0, idx - 50)
-                        end = min(len(all_text), idx + 20)
-                        potential_address = all_text[start:end].strip()
-                        if len(potential_address) > 10:
-                            data['address'] = potential_address
-                            break
+            
+            # First, try to find the element containing the postal code
+            all_elements = soup.find_all(string=postal_code_pattern)
+            for element in all_elements:
+                parent = element.find_parent()
+                if parent:
+                    # Get all text from the parent element
+                    parent_text = parent.get_text(separator=' ', strip=True)
+                    if len(parent_text) > 10:
+                        data['address'] = parent_text
+                        break
+            
+            # Fallback: search in full text
+            if not data['address']:
+                all_text = soup.get_text(separator=' ')
+                matches = postal_code_pattern.findall(all_text)
+                if matches:
+                    # Try to extract surrounding text as address
+                    for match in matches:
+                        idx = all_text.find(match)
+                        if idx > 0:
+                            # Get more text before postal code to capture full address
+                            start = max(0, idx - 100)
+                            end = min(len(all_text), idx + 20)
+                            potential_address = all_text[start:end].strip()
+                            # Clean up - remove any leading/trailing punctuation
+                            potential_address = re.sub(r'^[,\s]+|[,\s]+$', '', potential_address)
+                            if len(potential_address) > 10:
+                                data['address'] = potential_address
+                                break
         
         # Extract email - look for mailto links or email patterns
         email_link = soup.find('a', href=re.compile(r'^mailto:'))
@@ -264,49 +292,34 @@ def extract_listing_data(url: str) -> Optional[Dict]:
                         data['phone'] = phone
                         break
         
-        # Extract parking information
-        # Look for keywords related to parking in the page
-        page_text = soup.get_text().lower()
-        
-        # Car parking detection
-        # Look for parking-related sections or features
-        parking_sections = soup.find_all(string=re.compile(r'stationnement|parking', re.I))
-        for parking_text in parking_sections:
-            parent = parking_text.find_parent()
-            if parent:
-                parent_text = parent.get_text().lower()
-                # Check for positive indicators
-                positive_words = ['oui', 'yes', 'disponible', 'available', 'inclus', 'included', 'avec', 'with']
-                negative_words = ['non', 'no', 'sans', 'without', 'aucun', 'none']
-                
-                has_positive = any(word in parent_text for word in positive_words)
-                has_negative = any(word in parent_text for word in negative_words)
-                
-                if has_positive and not has_negative:
+        # Extract parking information from specific HTML elements
+        # Look for the features section with icon classes
+        features_section = soup.find('p', class_=re.compile(r'coop--features', re.I))
+        if features_section:
+            # Check for car parking icon
+            car_icon = features_section.find('span', class_=re.compile(r'icon-car-side', re.I))
+            if car_icon:
+                # If the icon doesn't have 'disabled' class, parking is available
+                if 'disabled' not in car_icon.get('class', []):
+                    data['has_car_parking'] = True
+            
+            # Check for bike parking icon
+            bike_icon = features_section.find('span', class_=re.compile(r'icon-bicycle', re.I))
+            if bike_icon:
+                # If the icon doesn't have 'disabled' class, parking is available
+                if 'disabled' not in bike_icon.get('class', []):
+                    data['has_bike_parking'] = True
+        else:
+            # Fallback: Look for individual icon elements anywhere on the page
+            car_icons = soup.find_all('span', class_=re.compile(r'icon-car-side', re.I))
+            for car_icon in car_icons:
+                if 'disabled' not in car_icon.get('class', []):
                     data['has_car_parking'] = True
                     break
-        
-        # Also check for feature lists or icons
-        feature_lists = soup.find_all(['ul', 'ol', 'div'], class_=re.compile(r'feature|amenity|service', re.I))
-        for feature_list in feature_lists:
-            list_text = feature_list.get_text().lower()
-            if 'stationnement' in list_text or 'parking' in list_text:
-                if any(word in list_text for word in ['oui', 'yes', 'disponible', 'available']):
-                    data['has_car_parking'] = True
-        
-        # Bike parking detection
-        bike_sections = soup.find_all(string=re.compile(r'vélo|bike|bicyclette|cyclo', re.I))
-        for bike_text in bike_sections:
-            parent = bike_text.find_parent()
-            if parent:
-                parent_text = parent.get_text().lower()
-                positive_words = ['oui', 'yes', 'disponible', 'available', 'inclus', 'included', 'avec', 'with']
-                negative_words = ['non', 'no', 'sans', 'without', 'aucun', 'none']
-                
-                has_positive = any(word in parent_text for word in positive_words)
-                has_negative = any(word in parent_text for word in negative_words)
-                
-                if has_positive and not has_negative:
+            
+            bike_icons = soup.find_all('span', class_=re.compile(r'icon-bicycle', re.I))
+            for bike_icon in bike_icons:
+                if 'disabled' not in bike_icon.get('class', []):
                     data['has_bike_parking'] = True
                     break
         
